@@ -9,5 +9,6 @@ wheels/
 # Virtual environments
 .venv
 
-# Raw data
+# Raw data and processed data
 data/raw/*
+data/vector_db/*

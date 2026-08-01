@@ -4,6 +4,7 @@ ground-truth news articles, fact-checks, and timestamped evidence.
 """
 
 import os
+import json
 from typing import List, Dict, Any, Optional
 
 try:
@@ -152,3 +153,70 @@ class FactVectorStore:
             "metadatas": results.get("metadatas", [[]])[0],
             "distances": results.get("distances", [[]])[0]
         }
+    
+    def populate_from_mmfakebench(self, json_path: str, max_samples: int = 500) -> None:
+        """
+        Extracts verified 'Real' news items from MMFakeBench JSON to populate baseline factual index.
+        """
+        if not os.path.exists(json_path):
+            print(f"[Skip] File not found at {json_path}")
+            return
+
+        with open(json_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        samples = list(data.values()) if isinstance(data, dict) else data
+
+        # Filter for verified real news (label == 0)
+        real_facts = []
+        metadatas = []
+        fact_ids = []
+
+        for idx, item in enumerate(samples):
+            label = item.get("label", item.get("annotation", 0))
+            label_int = 1 if (isinstance(label, str) and "fake" in label.lower()) else int(label)
+
+            if label_int == 0:  # Real news sample
+                caption = item.get("caption") or item.get("headline") or item.get("text") or ""
+                if caption.strip():
+                    real_facts.append(caption)
+                    metadatas.append({
+                        "source": "mmfakebench_real",
+                        "original_id": str(item.get("id", idx)),
+                        "type": "fact_check"
+                    })
+                    fact_ids.append(f"mmfakebench_real_{item.get('id', idx)}")
+
+            if len(real_facts) >= max_samples:
+                break
+
+        print(f"[Info] Found {len(real_facts)} 'Real' news articles to index as ground truth baseline.")
+        self.add_facts(texts=real_facts, metadatas=metadatas, ids=fact_ids)
+
+
+if __name__ == "__main__":
+    print("Initializing FactVectorStore test workflow...")
+
+    # Resolving path to validation JSON
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    repo_root = os.path.abspath(os.path.join(script_dir, "../../../"))
+    val_json = os.path.join(repo_root, "data/raw/mmfakebench_raw/MMFakeBench_val.json")
+
+    vector_db = FactVectorStore()
+
+    # Populate baseline if validation JSON exists
+    if os.path.exists(val_json):
+        vector_db.populate_from_mmfakebench(val_json, max_samples=50)
+
+    # Test Query
+    sample_query = "Police officers arrest suspect following car chase"
+    print(f"\n--- Testing Query: '{sample_query}' ---")
+    retrieved = vector_db.query_evidence(sample_query, n_results=2)
+
+    for i, doc in enumerate(retrieved["documents"]):
+        dist = retrieved["distances"][i] if retrieved["distances"] else 0.0
+        meta = retrieved["metadatas"][i] if retrieved["metadatas"] else {}
+        print(f"\n[Result {i+1}] Distance: {dist:.4f}")
+        print(f"Content: {doc}")
+        print(f"Metadata: {meta}")
+        

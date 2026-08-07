@@ -78,7 +78,7 @@ class TextEncoder(nn.Module):
 
         # Forward pass
         # Disable gradient computation inside the backbone if frozen to save VRAM
-        with torch.set_grad_enabled(not self.freeze):
+        with torch.set_grad_enabled(torch.is_grad_enabled() and not self.freeze):
             outputs = self.model(**inputs)
 
         # Mean pooling: average over the non-padded tokens

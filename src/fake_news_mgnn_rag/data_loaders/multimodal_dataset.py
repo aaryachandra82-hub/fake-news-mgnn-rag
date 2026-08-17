@@ -1,11 +1,11 @@
 """
-Custom PyTorch Dataset for loading MMFakeBench multimodal news pairs.
+Custom PyTorch Dataset for loading MMFakeBench and MiRAGeNews multimodal news pairs.
 Handles text captions, image loading, and label encoding.
 """
 
 import os
 import json
-from typing import Optional, Dict, Any, List, Union
+from typing import Optional, Dict, Any, List
 from PIL import Image
 
 import torch
@@ -13,16 +13,15 @@ from torch.utils.data import Dataset, DataLoader, ConcatDataset
 from torchvision import transforms
 
 try:
-    from datasets import load_dataset, Dataset as HFDataset
+    from datasets import load_dataset
 except ImportError:
     load_dataset = None
-    HFDataset = None
 
 
 def get_default_transform() -> transforms.Compose:
     """
-    Standard image transformations for Vision Transformer (ViT) and CLIP vision backbones.
-    Resizes images to 224x224 and normalizes with ImageNet statistics.
+    Standard image transformations for ViT and CLIP vision backbones.
+    Resizes to 224x224 and normalizes with ViT-style statistics.
     """
     return transforms.Compose([
         transforms.Resize((224, 224)),
@@ -49,15 +48,14 @@ class MMFakeBenchDataset(Dataset):
         self.transform = transform or get_default_transform()
 
         if not os.path.exists(json_path):
-            raise FileNotFoundError(f"MMFakeBench annotation file not found at: {json_path}")
+            raise FileNotFoundError(
+                f"MMFakeBench annotation file not found at: {json_path}"
+            )
 
         with open(json_path, "r", encoding="utf-8") as f:
             data = json.load(f)
 
-        if isinstance(data, dict):
-            self.samples = list(data.values())
-        else:
-            self.samples = data
+        self.samples = list(data.values()) if isinstance(data, dict) else data
 
     def __len__(self) -> int:
         return len(self.samples)
@@ -81,7 +79,11 @@ class MMFakeBenchDataset(Dataset):
     def __getitem__(self, idx: int) -> Dict[str, Any]:
         item = self.samples[idx]
 
-        caption = item.get("caption") or item.get("headline") or item.get("text") or ""
+        caption = (
+            item.get("caption") or
+            item.get("headline") or
+            item.get("text") or ""
+        )
 
         label_raw = item.get("label", item.get("annotation", 0))
         if isinstance(label_raw, str):
@@ -98,12 +100,10 @@ class MMFakeBenchDataset(Dataset):
         else:
             image = Image.new("RGB", (224, 224), color=0)
 
-        image_tensor = self.transform(image)
-
         return {
             "id": f"mmfakebench_{item.get('id', idx)}",
             "text": caption,
-            "image": image_tensor,
+            "image": self.transform(image),
             "label": torch.tensor(label, dtype=torch.long),
             "dataset_origin": "mmfakebench"
         }
@@ -111,7 +111,7 @@ class MMFakeBenchDataset(Dataset):
 
 class MiRAGeNewsDataset(Dataset):
     """
-    Dataset loader for MiRAGeNews deepfake & synthetic news pairs.
+    Dataset loader for MiRAGeNews deepfake and synthetic news pairs.
     Handles Midjourney/DALL-E images and AI-generated headlines.
     """
     def __init__(
@@ -125,19 +125,31 @@ class MiRAGeNewsDataset(Dataset):
         self.samples = []
 
         if load_dataset is None:
-            raise ImportError("huggingface datasets library is required. Install via `uv add datasets`.")
+            raise ImportError(
+                "huggingface datasets library is required. "
+                "Install via `uv add datasets`."
+            )
 
         try:
-            # Load dataset from local cache directory
-            hf_data = load_dataset("anson-huang/mirage-news", cache_dir=cache_dir)
+            hf_data = load_dataset(
+                "anson-huang/mirage-news",
+                cache_dir=cache_dir
+            )
+
+            # Strict split check — no silent fallback
             if self.split in hf_data:
                 self.samples = hf_data[self.split]
             else:
-                available_splits = list(hf_data.keys())
-                self.samples = hf_data[available_splits[0]]
-                print(f"[Notice] Split '{split}' not found in MiRAGeNews. Fallback to '{available_splits[0]}'.")
+                available = list(hf_data.keys())
+                raise ValueError(
+                    f"Split '{split}' not found in MiRAGeNews. "
+                    f"Available splits: {available}"
+                )
+
+        except ValueError:
+            raise
         except Exception as e:
-            print(f"[Warning] Failed to load MiRAGeNews from cache directory ({cache_dir}): {e}")
+            print(f"[Warning] Failed to load MiRAGeNews from {cache_dir}: {e}")
             self.samples = []
 
     def __len__(self) -> int:
@@ -146,18 +158,23 @@ class MiRAGeNewsDataset(Dataset):
     def __getitem__(self, idx: int) -> Dict[str, Any]:
         item = self.samples[idx]
 
-        caption = item.get("caption") or item.get("headline") or item.get("text") or ""
+        caption = (
+            item.get("caption") or
+            item.get("headline") or
+            item.get("text") or ""
+        )
 
-        # Parse AI-generated vs Real label
         label_raw = item.get("label", item.get("is_ai", item.get("annotation", 0)))
         if isinstance(label_raw, str):
-            label = 1 if ("fake" in label_raw.lower() or "ai" in label_raw.lower()) else 0
+            label = 1 if (
+                "fake" in label_raw.lower() or
+                "ai" in label_raw.lower()
+            ) else 0
         elif isinstance(label_raw, bool):
             label = 1 if label_raw else 0
         else:
             label = int(label_raw)
 
-        # Process image
         raw_image = item.get("image") or item.get("img")
         if isinstance(raw_image, Image.Image):
             image = raw_image.convert("RGB")
@@ -169,12 +186,10 @@ class MiRAGeNewsDataset(Dataset):
         else:
             image = Image.new("RGB", (224, 224), color=0)
 
-        image_tensor = self.transform(image)
-
         return {
             "id": f"miragenews_{item.get('id', idx)}",
             "text": caption,
-            "image": image_tensor,
+            "image": self.transform(image),
             "label": torch.tensor(label, dtype=torch.long),
             "dataset_origin": "miragenews"
         }
@@ -182,8 +197,8 @@ class MiRAGeNewsDataset(Dataset):
 
 class UnifiedMultimodalDataset(Dataset):
     """
-    Unified PyTorch Dataset combining MMFakeBench and MiRAGeNews samples.
-    Ensures standard key output across both cross-modal and deepfake benchmark datasets.
+    Unified dataset combining MMFakeBench and MiRAGeNews samples.
+    Ensures standard key output across both benchmark datasets.
     """
     def __init__(
         self,
@@ -197,29 +212,33 @@ class UnifiedMultimodalDataset(Dataset):
         self.dataset_source = dataset_source.lower()
         self.datasets: List[Dataset] = []
 
-        # Load MMFakeBench if requested
-        if self.dataset_source in ["combined", "mmfakebench"] and mmfakebench_json and mmfakebench_images:
-            if os.path.exists(mmfakebench_json):
-                self.datasets.append(MMFakeBenchDataset(
-                    json_path=mmfakebench_json,
-                    images_dir=mmfakebench_images,
-                    transform=transform
-                ))
+        if (
+            self.dataset_source in ["combined", "mmfakebench"]
+            and mmfakebench_json
+            and mmfakebench_images
+            and os.path.exists(mmfakebench_json)
+        ):
+            self.datasets.append(MMFakeBenchDataset(
+                json_path=mmfakebench_json,
+                images_dir=mmfakebench_images,
+                transform=transform
+            ))
 
-        # Load MiRAGeNews if requested
-        if self.dataset_source in ["combined", "miragenews"] and miragenews_dir:
-            if os.path.exists(miragenews_dir):
-                self.datasets.append(MiRAGeNewsDataset(
-                    cache_dir=miragenews_dir,
-                    split=miragenews_split,
-                    transform=transform
-                ))
+        if (
+            self.dataset_source in ["combined", "miragenews"]
+            and miragenews_dir
+            and os.path.exists(miragenews_dir)
+        ):
+            self.datasets.append(MiRAGeNewsDataset(
+                cache_dir=miragenews_dir,
+                split=miragenews_split,
+                transform=transform
+            ))
 
         if not self.datasets:
             print("[Warning] UnifiedMultimodalDataset initialized with 0 valid sub-datasets.")
-            self.concat_dataset = ConcatDataset([])
-        else:
-            self.concat_dataset = ConcatDataset(self.datasets)
+
+        self.concat_dataset = ConcatDataset(self.datasets) if self.datasets else ConcatDataset([])
 
     def __len__(self) -> int:
         return len(self.concat_dataset)
@@ -232,18 +251,20 @@ def get_multimodal_dataloader(
     mmfakebench_json: Optional[str] = None,
     mmfakebench_images: Optional[str] = None,
     miragenews_dir: Optional[str] = None,
+    miragenews_split: str = "validation",      # ← FIXED: now passed through
     dataset_source: str = "combined",
     batch_size: int = 16,
     shuffle: bool = True,
     num_workers: int = 2
 ) -> DataLoader:
     """
-    Factory function to instantiate a PyTorch DataLoader for multimodal news.
+    Factory function to create a DataLoader for multimodal news data.
     """
     dataset = UnifiedMultimodalDataset(
         mmfakebench_json=mmfakebench_json,
         mmfakebench_images=mmfakebench_images,
         miragenews_dir=miragenews_dir,
+        miragenews_split=miragenews_split,     # ← FIXED: now passed through
         dataset_source=dataset_source
     )
 
@@ -251,24 +272,24 @@ def get_multimodal_dataloader(
         dataset,
         batch_size=batch_size,
         shuffle=shuffle,
-        num_workers=num_workers
+        num_workers=num_workers,
+        pin_memory=torch.cuda.is_available()
     )
 
 
 if __name__ == "__main__":
     print("Testing Unified Multimodal Dataset Pipeline...")
 
-    SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-    REPO_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "../../../"))
-
-    val_json = os.path.join(REPO_ROOT, "data/raw/mmfakebench_raw/MMFakeBench_val.json")
-    val_images = os.path.join(REPO_ROOT, "data/raw/mmfakebench_raw/images_val")
-    mirage_dir = os.path.join(REPO_ROOT, "data/raw/miragenews")
+    # Correct local paths
+    val_json = "C:/mldata/mmfakebench_raw/MMFakeBench_val.json"
+    val_images = "C:/mldata/mmfakebench_raw/images_val"
+    mirage_dir = "C:/mldata/miragenews"
 
     dataset = UnifiedMultimodalDataset(
         mmfakebench_json=val_json,
         mmfakebench_images=val_images,
         miragenews_dir=mirage_dir,
+        miragenews_split="validation",
         dataset_source="combined"
     )
 
@@ -278,8 +299,8 @@ if __name__ == "__main__":
     if len(dataset) > 0:
         sample = dataset[0]
         print("\nSample Output Structure:")
-        print(f"  - Sample ID: {sample['id']}")
-        print(f"  - Dataset Origin: {sample['dataset_origin']}")
-        print(f"  - Text Length: {len(sample['text'])} chars")
-        print(f"  - Image Tensor Shape: {sample['image'].shape}")
-        print(f"  - Label Tensor: {sample['label']}")
+        print(f"  - Sample ID       : {sample['id']}")
+        print(f"  - Dataset Origin  : {sample['dataset_origin']}")
+        print(f"  - Text Length     : {len(sample['text'])} chars")
+        print(f"  - Image Shape     : {sample['image'].shape}")
+        print(f"  - Label           : {sample['label']}")

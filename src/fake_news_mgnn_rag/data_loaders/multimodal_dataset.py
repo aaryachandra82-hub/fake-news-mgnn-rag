@@ -280,10 +280,13 @@ def get_multimodal_dataloader(
 if __name__ == "__main__":
     print("Testing Unified Multimodal Dataset Pipeline...")
 
-    # Correct local paths
-    val_json = "C:/mldata/mmfakebench_raw/MMFakeBench_val.json"
-    val_images = "C:/mldata/mmfakebench_raw/images_val"
-    mirage_dir = "C:/mldata/miragenews"
+    # Dynamic paths relative to repository root
+    SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+    REPO_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "..", ".."))
+
+    val_json = os.path.join(REPO_ROOT, "data", "mmfakebench_raw", "MMFakeBench_val.json")
+    val_images = os.path.join(REPO_ROOT, "data", "mmfakebench_raw", "images_val")
+    mirage_dir = os.path.join(REPO_ROOT, "data", "miragenews")
 
     dataset = UnifiedMultimodalDataset(
         mmfakebench_json=val_json,

@@ -10,15 +10,17 @@ from sklearn.metrics import accuracy_score, precision_recall_fscore_support, cla
 
 # Ensure src/ is on the Python path for imports
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-REPO_ROOT = os.path.abspath(SCRIPT_DIR)
-if REPO_ROOT not in sys.path:
-    sys.path.insert(0, REPO_ROOT)
+SRC_DIR = os.path.join(SCRIPT_DIR, "src")
+if SRC_DIR not in sys.path:
+    sys.path.insert(0, SRC_DIR)
+if SCRIPT_DIR not in sys.path:
+    sys.path.insert(0, SCRIPT_DIR)
 
-from src.fake_news_mgnn_rag.data_loaders.multimodal_dataset import get_multimodal_dataloader
-from src.fake_news_mgnn_rag.models.text_baseline import TextBaselineClassifier
+from fake_news_mgnn_rag.data_loaders.multimodal_dataset import get_multimodal_dataloader
+from fake_news_mgnn_rag.models.baselines.text_baseline import TextBaselineClassifier
 
 # Dynamic default path relative to repository root
-DEFAULT_MIRAGENEWS_DIR = os.path.join(REPO_ROOT, "data", "miragenews")
+DEFAULT_MIRAGENEWS_DIR = os.path.join(SCRIPT_DIR, "data", "miragenews")
 
 
 def parse_args():
@@ -36,7 +38,7 @@ def parse_args():
     parser.add_argument(
         "--checkpoint_dir",
         type=str,
-        default=os.path.join(REPO_ROOT, "checkpoints"),
+        default=os.path.join(SCRIPT_DIR, "checkpoints"),
         help="Directory to save model checkpoints",
     )
     parser.add_argument(
@@ -207,7 +209,7 @@ def main():
 
     if all_test_labels:
         print("\nOverall Classification Report:")
-        print(classification_report(all_test_labels, all_test_preds, digits=4))
+        print(classification_report(all_test_labels, all_test_preds, digits=4, zero_division=0))
 
 
 if __name__ == "__main__":

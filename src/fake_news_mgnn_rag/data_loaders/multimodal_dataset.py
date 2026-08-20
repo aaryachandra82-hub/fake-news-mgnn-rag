@@ -232,7 +232,6 @@ def get_multimodal_dataloader(
     mmfakebench_json: Optional[str] = None,
     mmfakebench_images: Optional[str] = None,
     miragenews_dir: Optional[str] = None,
-    miragenews_split: str = "validation",
     dataset_source: str = "combined",
     batch_size: int = 16,
     shuffle: bool = True,
@@ -245,7 +244,6 @@ def get_multimodal_dataloader(
         mmfakebench_json=mmfakebench_json,
         mmfakebench_images=mmfakebench_images,
         miragenews_dir=miragenews_dir,
-        miragenews_split=miragenews_split,
         dataset_source=dataset_source
     )
 

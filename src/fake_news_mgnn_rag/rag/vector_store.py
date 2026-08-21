@@ -180,10 +180,14 @@ class FactVectorStore:
                 caption = item.get("caption") or item.get("headline") or item.get("text") or ""
                 if caption.strip():
                     real_facts.append(caption)
+                    # Generate a mock timestamp for the baseline facts based on the index
+                    # e.g., offset from a fixed date
+                    mock_timestamp = f"2023-01-{(idx % 28) + 1:02d}T12:00:00Z"
                     metadatas.append({
                         "source": "mmfakebench_real",
                         "original_id": str(item.get("id", idx)),
-                        "type": "fact_check"
+                        "type": "fact_check",
+                        "timestamp": mock_timestamp
                     })
                     fact_ids.append(f"mmfakebench_real_{item.get('id', idx)}")
 
